@@ -1,0 +1,22 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+flask = "*"
+flask-sqlalchemy = "*"
+flask-migrate = "*"
+python-dotenv = "*"
+requests = "*"
+pygithub = "*"
+numpy = "*"
+pandas = "*"
+plotly = "*"
+gunicorn = "*"
+chart-studio = "*"
+
+[requires]
+python_version = "3.7"
