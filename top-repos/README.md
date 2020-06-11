@@ -1,4 +1,8 @@
-# Github API Repository Response Attributes
+# Top 100 Repos Flask App
+
+The purpose of this Flask app is to explore the Top 100 repositories on Github through API calls, building databases, and crafting relevant charts. 
+
+## Github API Repository Response Attributes
 
 
 ### Github Repository Example response:
