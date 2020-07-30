@@ -19,7 +19,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from web_app.models import db, migrate, User, Repos
 from web_app.services import github_api_client
-from web_app.graphs import create_graph, issues_graph, merge_fraction, code_frequency
+#from web_app.graphs import issues_graph, merge_fraction, code_frequency, top_contributors
 
 load_dotenv()
 

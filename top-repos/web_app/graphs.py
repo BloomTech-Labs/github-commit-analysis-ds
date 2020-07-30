@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 import os
 from github import Github
+import time
 
 load_dotenv()
 
@@ -27,27 +28,12 @@ chart_studio.tools.set_credentials_file(username=CHART_STUDIO_USERNAME, api_key=
 # Config for share settings, can be public, private, etc
 chart_studio.tools.set_config_file(world_readable=True, sharing=CHART_STUDIO_SHARING)
 
-# example structure
-def create_graph():
-    trace0 = go.Scatter(
-    x=[1, 2, 3, 4],
-    y=[10, 15, 13, 17]
-    )
-    trace1 = go.Scatter(
-    x=[1, 2, 3, 4],
-    y=[16, 5, 11, 9]
-    )
-    data = [trace0, trace1]
-    
-    plot = py.plot(data, filename = 'basic-line', auto_open=True)
-
-    return plot
-
 # straight API issues pull from github for kubernetes
-def issues_graph():
-    URL = "https://api.github.com/repos/kubernetes/kubernetes/issues?page=1"
-    URL2 = "https://api.github.com/repos/kubernetes/kubernetes/issues?page=2"
-    URL3 = "https://api.github.com/repos/kubernetes/kubernetes/issues?page=3"
+def issues_graph(full_name):
+
+    URL = f"https://api.github.com/repos/{full_name}/issues?page=1"
+    URL2 = f"https://api.github.com/repos/{full_name}/issues?page=2"
+    URL3 = f"https://api.github.com/repos/{full_name}/issues?page=3"
     
     # sending get request and saving the response as response object 
     r = requests.get(url = URL)
@@ -85,10 +71,11 @@ def issues_graph():
     ))
 
     # variable for plot to return, saves filename to chart_studio
-    plot = py.plot(fig, filename='issues-comments-kubernetes-v2')
+    plot = py.plot(fig, filename='issues-comments-kubernetes-v2', auto_open=True)
     return plot
 
-def merge_fraction():
+# merge fraction graphs and API pull
+def merge_fraction(days):
     g = Github(PAT)
     repo = g.get_repo("kubernetes/kubernetes")
     all_pulls = repo.get_pulls(state="all")
@@ -97,7 +84,6 @@ def merge_fraction():
     Keywork arguments:
     days -- number of days to display (int)
     """
-    days = 7
 
     limit = date.today() - timedelta(days)
     pulls = []
@@ -143,18 +129,16 @@ def merge_fraction():
     plot = py.plot(fig, filename='merge-fractions-kubernetes')
     return plot
 
-def code_frequency():
+def code_frequency(days):
     g = Github(PAT)
     repo = g.get_repo("kubernetes/kubernetes")
     all_pulls = repo.get_pulls(state="all")
 
-    """Displays Kubernetes additions and deletions for the given period.
-
+    """
+    Displays Kubernetes additions and deletions for the given period.
     Keywork arguments:
     days -- number of days to display (int)
     """
-    days = 7
-
     limit = date.today() - timedelta(days)
     pulls = []
 
@@ -219,4 +203,197 @@ def code_frequency():
     plot = py.plot(fig, filename='code-frequency-kubernetes')
     return plot
 
+# top contributors graphs
+def top_contributors(full_name):
+  """
+  Displays top 10 all-time contributors for the given repository.
+  Keyword arguments:
+  full_name -- owner and name of repository in format: "owner/repo"
+  
+  """
+  g = Github(PAT)
+  repo = g.get_repo(full_name)
+  stats = repo.get_stats_contributors()[90:]
 
+  repo_data = {
+      'user': [stat.author.login for stat in stats],
+      'name': [g.get_user(stat.author.login).name for stat in stats],
+      'followers': [g.get_user(stat.author.login).followers for stat in stats],
+      'total_commits': [stat.total for stat in stats],
+  }
+
+  columns = list(repo_data.keys())
+  df = pd.DataFrame(repo_data, columns=columns)
+  
+  fig = go.Figure([go.Scatter(x=df["user"], 
+                          y=df["total_commits"], 
+                          text=df[['followers', 'name']],
+                          marker=dict(size=20, color=df['followers'],showscale=True),
+                          hovertemplate =
+                          "<b>%{x}</b><br>" +
+                          "Name: %{text[1]}<br>" +
+                          "Followers: %{text[0]}<br>" +
+                          "<extra></extra>",
+                          )])
+
+  fig.update_layout(
+    title=f'Top 10 All-Time Contributors: {full_name}',
+    # annotations=[dict(
+    #     xref='paper',
+    #     yref='paper',
+    #     x=0.5, y=-0.25,
+    #     showarrow=False,
+    #     text ='This is my caption for the Plotly figure'
+    # )]),
+    xaxis=dict(
+        tickangle=45
+    ),
+    yaxis=dict(
+        title='Total Commits',
+    ),
+  )
+  
+  plot = py.plot(fig, filename='top-contributors-kubernetes', auto_open=True)
+  return plot
+
+def yearly_commit_activity(owner_repo):
+  """Displays commit activity grouped by week for the last 365 days.
+
+  Keywork arguments:
+  owner_repo -- owner and name of repository in format: "owner/repo"
+  """
+  g = Github(PAT)
+  repo = g.get_repo(owner_repo)
+  stats = repo.get_stats_commit_activity()
+
+  repo_data = {
+      'week': [stat.week for stat in stats],
+      'total_commits': [stat.total for stat in stats],
+  }
+
+  columns = list(repo_data.keys())
+  df = pd.DataFrame(repo_data, columns=columns)
+  
+  fig = go.Figure([go.Bar(x=df["week"], 
+                          y=df["total_commits"]
+                          )])
+
+  fig.update_layout(
+    title=f'Yearly Commit Activity: {owner_repo}',
+
+    yaxis=dict(
+        title='Total Commits'
+    ),
+  )
+  
+  plot = py.plot(fig, filename='yearly-commit-activity', auto_open=True)
+  return plot
+
+def yearly_code_frequency(owner_repo):
+  """Displays the number of additions and deletions pushed this year.
+
+  Keywork arguments:
+  owner_repo -- owner and name of repository in format: "owner/repo"
+  """
+
+  g = Github(PAT)
+  repo = g.get_repo(owner_repo)
+  stats = repo.get_stats_code_frequency()[::-1]
+  months_included = []
+  stats_included = []
+
+  while len(months_included) < 12:
+    for stat in stats:
+      mo = stat.week.month
+      if mo not in months_included:
+        months_included.append(mo)
+        stats_included.append(stat)
+
+  repo_data = {
+      'week': [stat.week for stat in stats_included],
+      'additions': [stat.additions for stat in stats_included],
+      'deletions': [stat.deletions for stat in stats_included]
+  }
+
+  columns = list(repo_data.keys())
+  df = pd.DataFrame(repo_data, columns=columns)
+  
+  fig = go.Figure(data=[
+                        go.Bar(x=df["week"], y=df["additions"], name="Additions", marker_color='green'),
+                        go.Bar(x=df["week"], y=df["deletions"], name="Deletions", marker_color='red')
+                        ])
+
+  fig.update_layout(
+    title=f'Yearly Code Frequency: {owner_repo}',
+    barmode="overlay",
+    yaxis=dict(
+      title='Changes'
+    ),
+    # xaxis=dict(
+    #   showticklabels=True,
+    #   type='category',
+    #   tickformat='%b %d,%Y',
+    #   # tickmode='linear'
+    # )
+  )
+  
+  plot = py.plot(fig, filename='yearly-code-frequency', auto_open=True)
+  return plot
+
+def last_weeks_daily_commits(owner_repo):
+  """Displays the number of additions and deletions pushed this year.
+
+  Keywork arguments:
+  owner_repo -- owner and name of repository in format: "owner/repo"
+  """
+  g = Github(PAT)
+  repo = g.get_repo(owner_repo)
+  stats = repo.get_stats_punch_card()
+  stats = stats.raw_data
+
+  repo_data = {
+      'day': [stat[0] for stat in stats],
+      'commits': [stat[2] for stat in stats]
+  }
+
+  columns = list(repo_data.keys())
+  df = pd.DataFrame(repo_data, columns=columns)
+  df = df.groupby(["day"]).sum().reset_index()
+  
+  d = {0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6:'Saturday' } 
+  df = df.replace({"day": d}) 
+  
+  fig = go.Figure([go.Bar(x=df["day"], y=df["commits"])])
+
+  fig.update_layout(
+    title=f"Last Week's Daily Commits: {owner_repo}",
+    yaxis=dict(
+      title='Commits'
+    )
+  )
+  
+  plot = py.plot(fig, filename='past-week-daily-commits', auto_open=True)
+  return plot
+
+#execute function to keep up to date
+# wrapped these in a timer that loads once a day
+
+#def timer():
+#    # make
+#    time.sleep(5)
+#
+#    # can make this user defined if we want to
+#    repo = "kubernetes/kubernetes"
+#    days = 7
+#
+#    # execute functions
+#    issues_graph(repo)
+#    merge_fraction(days)
+#    code_frequency(days)
+#    top_contributors(repo)
+#    yearly_commit_activity(repo)
+#    yearly_code_frequency(repo)
+#    last_weeks_daily_commits(repo)
+#
+##execute
+#timer()
